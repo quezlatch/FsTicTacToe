@@ -1,9 +1,17 @@
+eventstore:
+  image: adbrowne/eventstore
+  ports:
+    - 1113:1113
+    - 2113:2113
+
 get-guid:
   build: get-guid
 
 send-cmd:
   build: send-commands
-
+  links:
+    - eventstore:eventstore
+    
 web:
   image: nginx
   ports:

@@ -8,20 +8,45 @@ open Suave.Filters
 open Suave.Successful
 open Suave.Writers
 
+open EventStore.ClientAPI
+
+open System
+
+let conn =
+  let conn = EventStoreConnection.Create("ConnectTo=tcp://admin:changeit@eventstore:1113; HeartBeatTimeout=500")
+  conn.ConnectAsync() |> Async.AwaitTask |> Async.RunSynchronously
+  conn
+
 let config =
     { defaultConfig with 
         bindings = [ HttpBinding.mk HTTP System.Net.IPAddress.Any 8080us]
     }
+
+module Events =
+  type GameStarted = {
+    player1: string
+    player2: string
+  }
+
+  type PlayerMoved = {
+    player: string
+    position: int * int
+  }
 
 let processCommand (command,id) =
   match System.Guid.TryParse id with
   | true,g -> 
     fun ctx ->
       async {
-        let g =
-          System.DateTime.Now.ToString() 
-          |> sprintf "{\"command\": \"%s\", \"received\": %A}" command
-        return! OK g ctx
+        let streamId = "game-" + (g.ToString "N")
+        let data = [||] : byte array
+        let metaData = [||] : byte array
+        let eventData = new EventData(Guid.NewGuid(), command, true, data, metaData)
+        let! wf = conn.AppendToStreamAsync(streamId, ExpectedVersion.NoStream, eventData) |> Async.AwaitTask        
+
+
+
+        return! OK "{}" ctx
       }
   | _ -> failwith "Could not parse id"
 
