@@ -154,6 +154,9 @@ publish/
 *.nuget.props
 *.nuget.targets
 
+# paket
+**/.paket/*
+
 # Microsoft Azure Build Output
 csx/
 *.build.csdef
