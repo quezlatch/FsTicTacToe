@@ -1,0 +1,4 @@
+source https://www.nuget.org/api/v2
+nuget eventstore.client
+nuget suave
+nuget suave.libuv

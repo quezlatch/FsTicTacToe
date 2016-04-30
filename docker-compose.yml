@@ -1,12 +1,16 @@
 get-guid:
   build: get-guid
 
+send-cmd:
+  build: send-commands
+
 web:
   image: nginx
   ports:
     - 8080:80
   links:
     - get-guid:get-guid
+    - send-cmd:send-cmd
   environment:
     - NGINX_HOST=foobar.com
     - NGINX_PORT=80
