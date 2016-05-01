@@ -51,7 +51,7 @@ let processCommand (command,id) =
   | _ -> failwith "Could not parse id"
 
 let app =
-  GET  
+  POST  
   >=> pathScan "/api/commands/%s/%s" processCommand
   >=> setMimeType "application/json; charset=utf-8"
 
