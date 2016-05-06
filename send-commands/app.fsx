@@ -1,6 +1,7 @@
 #r "packages/Suave/lib/net40/Suave.dll"
 #r "packages/EventStore.Client/lib/net40/EventStore.ClientAPI.dll"
-   
+#r "packages/Newtonsoft.Json/lib/net45/Newtonsoft.Json.dll"
+
 open Suave
 open Suave.Http
 open Suave.Operators
@@ -22,32 +23,74 @@ let config =
         bindings = [ HttpBinding.mk HTTP System.Net.IPAddress.Any 8080us]
     }
 
-module Events =
-  type GameStarted = {
+type StartGame = 
+  {
     player1: string
-    player2: string
+    player2: string  }
+
+type MovePlayer = {
+  player: string
+  position: int * int
+}
+
+type GameEvent =
+  | GameStarted of StartGame
+  | PlayerMoved of MovePlayer
+
+type MetaData = 
+  {
+    timestamp: DateTime
   }
 
-  type PlayerMoved = {
-    player: string
-    position: int * int
-  }
+open Newtonsoft.Json
+
+let toJsonBytes value =
+  value |> JsonConvert.SerializeObject |> System.Text.Encoding.UTF8.GetBytes
+  
+let fromJson<'a> json =
+  JsonConvert.DeserializeObject(json, typeof<'a>) :?> 'a
+
+let getResourceFromReq<'a> (req : HttpRequest) =
+  let getString rawForm =
+    System.Text.Encoding.UTF8.GetString(rawForm)
+  req.rawForm |> getString |> fromJson<'a>
+
+let createEventData eventType event =
+    let data = event |> toJsonBytes
+    let metaData = { timestamp = DateTime.Now } |> toJsonBytes
+    new EventData(Guid.NewGuid(), eventType, true, data, metaData)
+
+let appendToGameStream (sessionId:Guid) eventType expectedVersion event = async {
+    let streamId = "game-" + (sessionId.ToString "N")
+    let eventData = createEventData eventType event
+    let! wf = conn.AppendToStreamAsync(streamId, expectedVersion, eventData) |> Async.AwaitTask        
+    return wf.LogPosition.PreparePosition
+}        
+
+let setLocationToEvent sessionId positionPromise =
+  fun (ctx : HttpContext) ->
+    async {
+      let! position = positionPromise
+      let location = sprintf "/games/%A/stream/%d" sessionId position
+      return! setHeader "Location" location ctx
+    }
+
+let eventCreated sessionId positionPromise = 
+   setLocationToEvent sessionId positionPromise
+   >=> Successful.created [||]
+
+let startGame sessionId req =
+  let createEventFromCmd cmd = GameStarted(cmd)
+  getResourceFromReq req
+  |> createEventFromCmd
+  |> appendToGameStream sessionId "gameStarted" ExpectedVersion.NoStream 
+  |> eventCreated sessionId
 
 let processCommand (command,id) =
+  printfn "process command"
   match System.Guid.TryParse id with
-  | true,g -> 
-    fun ctx ->
-      async {
-        let streamId = "game-" + (g.ToString "N")
-        let data = [||] : byte array
-        let metaData = [||] : byte array
-        let eventData = new EventData(Guid.NewGuid(), command, true, data, metaData)
-        let! wf = conn.AppendToStreamAsync(streamId, ExpectedVersion.NoStream, eventData) |> Async.AwaitTask        
-
-
-
-        return! OK "{}" ctx
-      }
+  | true,sessionId -> 
+    request (startGame sessionId) 
   | _ -> failwith "Could not parse id"
 
 let app =
@@ -55,4 +98,5 @@ let app =
   >=> pathScan "/api/commands/%s/%s" processCommand
   >=> setMimeType "application/json; charset=utf-8"
 
+printfn "starting commands"
 startWebServer config app
