@@ -2,10 +2,8 @@
 #r "packages/Newtonsoft.Json/lib/net45/Newtonsoft.Json.dll"
 
 open Suave
-open Suave.Http
 open Suave.Operators
 open Suave.Filters
-open Suave.Successful
 open Suave.Writers
 
 open System
